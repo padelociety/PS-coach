@@ -684,8 +684,10 @@
                       <div key={member.name} className="rounded-2xl p-4 border border-slate-700/60" style={{ background: 'linear-gradient(180deg, rgba(24,33,50,0.85) 0%, rgba(18,24,40,0.85) 100%)' }}>
                         <div className="flex items-start justify-between mb-2 gap-2">
                           <div className="font-black text-base text-slate-100 leading-tight break-words flex-1 min-w-0">{member.name}</div>
-                          <div className="flex items-center gap-0.5 mono font-bold text-sm px-2.5 py-1 rounded-full shrink-0" style={{ background: 'rgba(190,242,100,0.12)', color: '#bef264', border: '1px solid rgba(190,242,100,0.3)' }}>
-                            {member.sessions.length}<span className="text-[10px] opacity-60 ml-0.5">×</span>
+                          <div className="flex items-center mono font-bold text-sm px-2.5 py-1 rounded-full shrink-0" style={{ background: 'rgba(190,242,100,0.12)', color: '#bef264', border: '1px solid rgba(190,242,100,0.3)' }}>
+                            <span className="inline-flex items-baseline">{member.sessions.length}<span className="text-[10px] opacity-60 ml-0.5">×</span></span>
+                            <span className="opacity-40 mx-1.5">·</span>
+                            <span className="inline-flex items-baseline">{member.sessions.reduce((sum, s) => sum + (s.duration || 1), 0)}<span className="text-[10px] opacity-60 ml-0.5">H</span></span>
                           </div>
                         </div>
 
