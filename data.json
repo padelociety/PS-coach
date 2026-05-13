@@ -64,9 +64,7 @@
           "startHour": 20,
           "duration": 1,
           "student": "Huny",
-          "lessonType": [
-            "Basics"
-          ],
+          "lessonType": [],
           "notes": ""
         },
         {
