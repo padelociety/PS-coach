@@ -47,9 +47,9 @@
         {
           "startHour": 18,
           "duration": 1,
-          "student": "Tomasco",
+          "student": "Tomasco, Huny, Jiwon",
           "lessonType": [
-            "Smash"
+            "ProAm"
           ],
           "notes": ""
         },
@@ -258,6 +258,10 @@
       ]
     }
   ],
-  "customLessonTypes": [],
-  "customTypeColors": {}
+  "customLessonTypes": [
+    "ProAm"
+  ],
+  "customTypeColors": {
+    "ProAm": "#ef4444"
+  }
 }
