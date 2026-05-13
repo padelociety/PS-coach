@@ -148,9 +148,7 @@
           "startHour": 8,
           "duration": 1,
           "student": "Jiwon, HK",
-          "lessonType": [
-            "Positioning"
-          ],
+          "lessonType": [],
           "notes": ""
         },
         {
