@@ -29,9 +29,13 @@
         {
           "startHour": 16,
           "duration": 1,
-          "student": "",
-          "lessonType": [],
-          "notes": ""
+          "student": "Tomasco",
+          "lessonType": [
+            "Bandeja",
+            "Vibora",
+            "Smash"
+          ],
+          "notes": "Tips on how to using body for each overhead shot."
         },
         {
           "startHour": 17,
