@@ -169,9 +169,7 @@
           "startHour": 14,
           "duration": 1,
           "student": "David",
-          "lessonType": [
-            "Match"
-          ],
+          "lessonType": [],
           "notes": ""
         },
         {
