@@ -238,9 +238,11 @@
     }
   ],
   "customLessonTypes": [
-    "ProAm"
+    "ProAm",
+    "Defense"
   ],
   "customTypeColors": {
-    "ProAm": "#ef4444"
+    "ProAm": "#ef4444",
+    "Defense": "#10b981"
   }
 }
