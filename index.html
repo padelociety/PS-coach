@@ -1,0 +1,1081 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no" />
+  <title>PS Coach Schedule</title>
+  <meta name="description" content="Padel Society weekly coaching schedule" />
+
+  <!-- PWA -->
+  <link rel="manifest" href="./manifest.json" />
+  <meta name="theme-color" content="#0f1729" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="PS Coach" />
+  <link rel="apple-touch-icon" href="./icon-192.png" />
+  <link rel="icon" type="image/png" sizes="192x192" href="./icon-192.png" />
+  <link rel="icon" type="image/png" sizes="512x512" href="./icon-512.png" />
+
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
+
+  <!-- React + Babel + Tailwind via CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+  <style>
+    html, body { background: #080c16; color: #f1f5f9; font-family: 'Outfit', system-ui, sans-serif; }
+    body { margin: 0; min-height: 100vh; -webkit-tap-highlight-color: transparent; }
+    .mono { font-family: 'JetBrains Mono', monospace; }
+    @keyframes fadeUp { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
+    @keyframes slideUp { from { opacity: 0; transform: translateY(100%); } to { opacity: 1; transform: translateY(0); } }
+    @keyframes pop { from { opacity: 0; transform: scale(0.95); } to { opacity: 1; transform: scale(1); } }
+    @keyframes pulseOpacity { 0%, 100% { opacity: 1; } 50% { opacity: 0.55; } }
+    .anim-fade { animation: fadeUp 0.4s ease-out backwards; }
+    .anim-slide { animation: slideUp 0.3s ease-out; }
+    .anim-pop { animation: pop 0.2s ease-out; }
+    .pulse-fade { animation: pulseOpacity 2.5s ease-in-out infinite; }
+    /* Splash before React mounts */
+    #splash { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; background: #080c16; z-index: 9999; transition: opacity 0.3s; }
+    #splash.gone { opacity: 0; pointer-events: none; }
+    #splash .ring { width: 36px; height: 36px; border: 3px solid rgba(190,242,100,0.18); border-top-color: #bef264; border-radius: 50%; animation: spin 0.9s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+  <div id="splash"><div class="ring"></div></div>
+  <div id="root"></div>
+
+  <script type="text/babel" data-presets="env,react">
+    const { useState, useEffect, useMemo } = React;
+
+    const STORAGE_KEY = 'ps-schedule-v4';
+    const START_HOUR = 7;
+    const END_HOUR = 23;
+    const HOURS = Array.from({ length: END_HOUR - START_HOUR }, (_, i) => START_HOUR + i);
+
+    const BUILTIN_LESSON_TYPES = ['Basics', 'Forehand', 'Backhand', 'Volley', 'Bandeja', 'Vibora', 'Smash', 'Positioning', 'Tactics', 'Match'];
+    const CUSTOM_COLOR_PALETTE = ['#ef4444', '#10b981', '#a855f7', '#f43f5e', '#14b8a6', '#84cc16', '#f97316', '#22d3ee', '#eab308', '#d946ef'];
+
+    const INITIAL_DATA = [
+      {
+        day: 'MON', date: 'MAY 18',
+        slots: [
+          { startHour: 14, duration: 1, student: 'Jiwon', lessonType: ['Forehand'], notes: 'Work on topspin and follow-through' },
+          { startHour: 15, duration: 1, student: 'HK', lessonType: ['Backhand'], notes: '' },
+          { startHour: 16, duration: 1, student: '', lessonType: [], notes: '' },
+          { startHour: 17, duration: 1, student: '', lessonType: [], notes: '' },
+          { startHour: 18, duration: 1, student: 'Tomasco', lessonType: ['Smash'], notes: '' },
+          { startHour: 19, duration: 1, student: 'David', lessonType: ['Volley'], notes: '' },
+          { startHour: 20, duration: 1, student: 'Huny', lessonType: ['Basics'], notes: '' },
+          { startHour: 21, duration: 1, student: '4 Group', lessonType: ['Match'], notes: '' },
+        ]
+      },
+      {
+        day: 'TUE', date: 'MAY 19',
+        slots: [
+          { startHour: 7, duration: 2, student: '3 Group', lessonType: ['Tactics'], notes: 'Net play formations and lob defense' },
+          { startHour: 9, duration: 1, student: 'Jieun', lessonType: ['Backhand'], notes: '' },
+          { startHour: 16, duration: 1, student: 'Jiwon', lessonType: ['Volley'], notes: '' },
+          { startHour: 17, duration: 1, student: 'David', lessonType: ['Tactics'], notes: '' },
+          { startHour: 18, duration: 1, student: '', lessonType: [], notes: '' },
+          { startHour: 21, duration: 1, student: '4 Group', lessonType: ['Match'], notes: '' },
+          { startHour: 22, duration: 1, student: '', lessonType: [], notes: '' },
+        ]
+      },
+      {
+        day: 'WED', date: 'MAY 20',
+        slots: [
+          { startHour: 7, duration: 1, student: 'Jeehee, Jieun', lessonType: ['Basics'], notes: '' },
+          { startHour: 8, duration: 1, student: 'Jiwon, HK', lessonType: ['Positioning'], notes: '' },
+          { startHour: 9, duration: 1, student: 'Jieun', lessonType: ['Volley'], notes: '' },
+          { startHour: 11, duration: 1, student: 'Jiwon', lessonType: ['Bandeja', 'Vibora'], notes: '' },
+          { startHour: 14, duration: 1, student: 'David', lessonType: ['Match'], notes: '' },
+          { startHour: 15, duration: 2, student: 'Junwoo', lessonType: ['Match', 'Tactics'], notes: 'Tournament prep — focus on left-side patterns' },
+          { startHour: 18, duration: 1, student: '', lessonType: [], notes: '' },
+          { startHour: 19, duration: 1, student: '', lessonType: [], notes: '' },
+          { startHour: 20, duration: 1, student: '', lessonType: [], notes: '' },
+          { startHour: 21, duration: 1, student: '', lessonType: [], notes: '' },
+        ]
+      },
+      {
+        day: 'THU', date: 'MAY 21',
+        slots: [
+          { startHour: 7, duration: 2, student: '3 Group', lessonType: ['Tactics'], notes: 'Net play formations and lob defense' },
+          { startHour: 9, duration: 1, student: 'Jieun', lessonType: ['Forehand'], notes: '' },
+        ]
+      },
+    ];
+
+    const DAY_COLORS = [
+      { main: '#bef264', rgb: '190,242,100' },
+      { main: '#7dd3fc', rgb: '125,211,252' },
+      { main: '#fcd34d', rgb: '252,211,77' },
+      { main: '#f9a8d4', rgb: '249,168,212' },
+    ];
+
+    const BUILTIN_TYPE_COLORS = {
+      'Basics': '#94a3b8', 'Forehand': '#bef264', 'Backhand': '#a3e635',
+      'Volley': '#7dd3fc', 'Bandeja': '#38bdf8', 'Vibora': '#06b6d4',
+      'Smash': '#fb923c', 'Positioning': '#fcd34d', 'Tactics': '#c084fc',
+      'Match': '#f9a8d4',
+    };
+
+    function fmtHour(h) {
+      if (h === 0) return '12';
+      if (h === 12) return '12';
+      return String(h > 12 ? h - 12 : h);
+    }
+    function ampm(h) { return h < 12 ? 'AM' : 'PM'; }
+    function fmtTimeRange(start, duration) {
+      const end = start + duration;
+      const sH = start === 0 ? 12 : start > 12 ? start - 12 : start;
+      const eH = end === 0 ? 12 : end > 12 ? end - 12 : end;
+      const sAp = start < 12 ? 'AM' : 'PM';
+      const eAp = end < 12 || end === 24 ? 'AM' : 'PM';
+      if (sAp === eAp) return `${sH}–${eH} ${eAp}`;
+      return `${sH} ${sAp}–${eH} ${eAp}`;
+    }
+
+    // Migration: Korean lesson types → English, string → array
+    const KR_TO_EN = {
+      '기초': 'Basics', '포핸드': 'Forehand', '백핸드': 'Backhand',
+      '발리': 'Volley', '반데하': 'Bandeja', '스매시': 'Smash',
+      '포지셔닝': 'Positioning', '전술': 'Tactics', '게임': 'Match',
+    };
+    const migrateDays = (rawDays) => rawDays.map(d => ({
+      ...d,
+      slots: (d.slots || []).map(s => {
+        let lt = s.lessonType;
+        if (typeof lt === 'string') lt = lt ? [lt] : [];
+        if (!Array.isArray(lt)) lt = [];
+        lt = lt.map(t => KR_TO_EN[t] || t).filter(Boolean);
+        return { ...s, lessonType: lt, notes: typeof s.notes === 'string' ? s.notes : '' };
+      }),
+    }));
+
+    function Schedule() {
+      const [coach, setCoach] = useState('Saul');
+      const [days, setDays] = useState(INITIAL_DATA);
+      const [edit, setEdit] = useState(null);
+      const [editCoach, setEditCoach] = useState(false);
+      const [tempCoach, setTempCoach] = useState('');
+      const [confirmReset, setConfirmReset] = useState(false);
+      const [hydrated, setHydrated] = useState(false);
+      const [imagePreview, setImagePreview] = useState(null);
+      const [exporting, setExporting] = useState(null);
+      const [h2cReady, setH2cReady] = useState(false);
+      const [customLessonTypes, setCustomLessonTypes] = useState([]);
+      const [customTypeColors, setCustomTypeColors] = useState({});
+      const [confirmDeleteType, setConfirmDeleteType] = useState(null);
+      const [showShareModal, setShowShareModal] = useState(false);
+      const [pasteInput, setPasteInput] = useState('');
+      const [copySuccess, setCopySuccess] = useState(false);
+      const [loadBanner, setLoadBanner] = useState(false);
+      const [updateAvailable, setUpdateAvailable] = useState(false);
+
+      const lessonTypes = useMemo(() => [...BUILTIN_LESSON_TYPES, ...customLessonTypes], [customLessonTypes]);
+      const typeColor = (t) => BUILTIN_TYPE_COLORS[t] || customTypeColors[t] || '#94a3b8';
+
+      const addCustomLessonType = (name) => {
+        const n = (name || '').trim();
+        if (!n) return false;
+        if (BUILTIN_LESSON_TYPES.includes(n) || customLessonTypes.includes(n)) return false;
+        const usedColors = new Set(Object.values(customTypeColors));
+        const nextColor = CUSTOM_COLOR_PALETTE.find(c => !usedColors.has(c))
+          || CUSTOM_COLOR_PALETTE[customLessonTypes.length % CUSTOM_COLOR_PALETTE.length];
+        setCustomLessonTypes(prev => [...prev, n]);
+        setCustomTypeColors(prev => ({ ...prev, [n]: nextColor }));
+        return true;
+      };
+
+      const deleteCustomLessonType = (name) => {
+        setCustomLessonTypes(prev => prev.filter(t => t !== name));
+        setCustomTypeColors(prev => { const next = { ...prev }; delete next[name]; return next; });
+        setDays(prev => prev.map(d => ({
+          ...d,
+          slots: d.slots.map(s => ({ ...s, lessonType: (s.lessonType || []).filter(t => t !== name) })),
+        })));
+        if (edit) setEdit(e => e ? ({ ...e, lessonType: (e.lessonType || []).filter(t => t !== name) }) : e);
+        setConfirmDeleteType(null);
+      };
+
+      // URL hash share
+      const encodeStateToString = () => {
+        try {
+          const state = { v: 1, coach, days, customLessonTypes, customTypeColors };
+          return btoa(unescape(encodeURIComponent(JSON.stringify(state))));
+        } catch (e) { console.error(e); return ''; }
+      };
+      const shareUrl = useMemo(() => {
+        try {
+          const encoded = encodeStateToString();
+          if (!encoded) return '';
+          return `${window.location.origin}${window.location.pathname}#schedule=${encoded}`;
+        } catch (e) { return ''; }
+      }, [coach, days, customLessonTypes, customTypeColors]);
+
+      const handleCopyShare = async () => {
+        try {
+          await navigator.clipboard.writeText(shareUrl);
+          setCopySuccess(true);
+          setTimeout(() => setCopySuccess(false), 2000);
+        } catch (e) {
+          alert('Could not copy automatically. Long-press the link to copy it manually.');
+        }
+      };
+
+      const handleLoadFromInput = () => {
+        const input = (pasteInput || '').trim();
+        if (!input) return;
+        try {
+          let encoded = input;
+          const hashIdx = input.indexOf('#schedule=');
+          if (hashIdx >= 0) encoded = input.slice(hashIdx + '#schedule='.length);
+          const json = decodeURIComponent(escape(atob(encoded)));
+          const data = JSON.parse(json);
+          if (data.coach) setCoach(data.coach);
+          if (Array.isArray(data.days)) setDays(migrateDays(data.days));
+          if (Array.isArray(data.customLessonTypes)) setCustomLessonTypes(data.customLessonTypes);
+          if (data.customTypeColors && typeof data.customTypeColors === 'object') setCustomTypeColors(data.customTypeColors);
+          setPasteInput('');
+          setShowShareModal(false);
+          setLoadBanner(true);
+          setTimeout(() => setLoadBanner(false), 3000);
+        } catch (e) {
+          alert('Could not load — the link or code is invalid.');
+        }
+      };
+
+      // Load html2canvas
+      useEffect(() => {
+        if (window.html2canvas) { setH2cReady(true); return; }
+        const script = document.createElement('script');
+        script.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js';
+        script.onload = () => setH2cReady(true);
+        script.onerror = () => console.warn('html2canvas failed to load');
+        document.head.appendChild(script);
+      }, []);
+
+      // Hydrate from URL hash or localStorage
+      useEffect(() => {
+        try {
+          const hash = window.location.hash || '';
+          if (hash.startsWith('#schedule=')) {
+            const encoded = hash.slice('#schedule='.length);
+            const json = decodeURIComponent(escape(atob(encoded)));
+            const data = JSON.parse(json);
+            if (data.coach) setCoach(data.coach);
+            if (Array.isArray(data.days)) setDays(migrateDays(data.days));
+            if (Array.isArray(data.customLessonTypes)) setCustomLessonTypes(data.customLessonTypes);
+            if (data.customTypeColors && typeof data.customTypeColors === 'object') setCustomTypeColors(data.customTypeColors);
+            setLoadBanner(true);
+            setTimeout(() => setLoadBanner(false), 4000);
+            setHydrated(true);
+            return;
+          }
+        } catch (e) { console.warn('Hash decode failed:', e); }
+
+        try {
+          const raw = localStorage.getItem(STORAGE_KEY);
+          if (raw) {
+            const parsed = JSON.parse(raw);
+            if (parsed.coach) setCoach(parsed.coach);
+            if (Array.isArray(parsed.customLessonTypes)) setCustomLessonTypes(parsed.customLessonTypes);
+            if (parsed.customTypeColors && typeof parsed.customTypeColors === 'object') setCustomTypeColors(parsed.customTypeColors);
+            if (parsed.days) setDays(migrateDays(parsed.days));
+          }
+        } catch (e) { console.warn('localStorage load failed:', e); }
+        setHydrated(true);
+      }, []);
+
+      // Persist
+      useEffect(() => {
+        if (!hydrated) return;
+        try {
+          localStorage.setItem(STORAGE_KEY, JSON.stringify({ coach, days, customLessonTypes, customTypeColors }));
+        } catch (e) { console.error('Save failed:', e); }
+      }, [coach, days, customLessonTypes, customTypeColors, hydrated]);
+
+      // Hide splash once hydrated
+      useEffect(() => {
+        if (!hydrated) return;
+        const splash = document.getElementById('splash');
+        if (splash) {
+          splash.classList.add('gone');
+          setTimeout(() => splash.remove(), 350);
+        }
+      }, [hydrated]);
+
+      // SW update detection
+      useEffect(() => {
+        if (!('serviceWorker' in navigator)) return;
+        const onMsg = (e) => {
+          if (e.data && e.data.type === 'UPDATE_AVAILABLE') setUpdateAvailable(true);
+        };
+        navigator.serviceWorker.addEventListener('message', onMsg);
+        return () => navigator.serviceWorker.removeEventListener('message', onMsg);
+      }, []);
+
+      const memberStats = useMemo(() => {
+        const map = new Map();
+        let totalLessons = 0;
+        let totalHours = 0;
+        days.forEach((day, dayIdx) => {
+          day.slots.forEach(slot => {
+            if (!slot.student) return;
+            totalLessons++;
+            totalHours += (slot.duration || 1);
+            const isGroup = /group|team|crew|squad/i.test(slot.student);
+            const names = isGroup
+              ? [slot.student.trim()]
+              : slot.student.split(',').map(n => n.trim()).filter(Boolean);
+            names.forEach(name => {
+              if (!map.has(name)) map.set(name, { name, sessions: [], typeCounts: {} });
+              const entry = map.get(name);
+              entry.sessions.push({
+                dayIdx, day: day.day, date: day.date,
+                startHour: slot.startHour, duration: slot.duration,
+                lessonType: Array.isArray(slot.lessonType) ? slot.lessonType : (slot.lessonType ? [slot.lessonType] : []),
+                notes: slot.notes || '',
+                coStudents: names.filter(n => n !== name),
+                isGroup,
+              });
+              const types = Array.isArray(slot.lessonType) ? slot.lessonType : (slot.lessonType ? [slot.lessonType] : []);
+              types.forEach(t => {
+                const tt = (t || '').trim();
+                if (tt) entry.typeCounts[tt] = (entry.typeCounts[tt] || 0) + 1;
+              });
+            });
+          });
+        });
+        map.forEach(m => {
+          m.sessions.sort((a, b) => a.dayIdx - b.dayIdx || a.startHour - b.startHour);
+        });
+        const members = Array.from(map.values()).sort((a, b) =>
+          b.sessions.length - a.sessions.length || a.name.localeCompare(b.name)
+        );
+        return { members, totalLessons, totalHours };
+      }, [days]);
+
+      const openEdit = (dayIdx, slotIdx, defaultHour = 14) => {
+        if (slotIdx === 'new') {
+          setEdit({ dayIdx, slotIdx, startHour: defaultHour, duration: 1, student: '', lessonType: [], notes: '' });
+        } else {
+          const s = days[dayIdx].slots[slotIdx];
+          setEdit({ dayIdx, slotIdx, startHour: s.startHour, duration: s.duration, student: s.student, lessonType: Array.isArray(s.lessonType) ? [...s.lessonType] : (s.lessonType ? [s.lessonType] : []), notes: s.notes || '' });
+        }
+      };
+
+      const wouldOverlap = (dayIdx, startHour, duration, excludeSlotIdx) => {
+        const newEnd = startHour + duration;
+        return days[dayIdx].slots.some((s, idx) => {
+          if (idx === excludeSlotIdx) return false;
+          const sEnd = s.startHour + s.duration;
+          return startHour < sEnd && s.startHour < newEnd;
+        });
+      };
+
+      const saveEdit = () => {
+        const { dayIdx, slotIdx, startHour, duration, student, lessonType, notes } = edit;
+        if (wouldOverlap(dayIdx, startHour, duration, slotIdx === 'new' ? -1 : slotIdx)) {
+          alert('This slot overlaps with another time.');
+          return;
+        }
+        setDays(prev => prev.map((d, i) => {
+          if (i !== dayIdx) return d;
+          const slots = [...d.slots];
+          const slot = { startHour, duration, student: student.trim(), lessonType: (Array.isArray(lessonType) ? lessonType : []).map(t => t.trim()).filter(Boolean), notes: (notes || '').trim() };
+          if (slotIdx === 'new') slots.push(slot);
+          else slots[slotIdx] = slot;
+          slots.sort((a, b) => a.startHour - b.startHour);
+          return { ...d, slots };
+        }));
+        setEdit(null);
+      };
+
+      const removeSlot = () => {
+        if (edit.slotIdx === 'new') { setEdit(null); return; }
+        setDays(prev => prev.map((d, i) => {
+          if (i !== edit.dayIdx) return d;
+          return { ...d, slots: d.slots.filter((_, si) => si !== edit.slotIdx) };
+        }));
+        setEdit(null);
+      };
+
+      const doReset = () => { setCoach('Saul'); setDays(INITIAL_DATA); setConfirmReset(false); };
+
+      const saveAsImage = async (elementId, label) => {
+        if (!h2cReady || !window.html2canvas) { alert('Image library is loading. Please try again in a moment.'); return; }
+        setExporting(label);
+        try {
+          const target = document.getElementById(elementId);
+          if (!target) throw new Error(`Element ${elementId} not found`);
+          await new Promise(r => requestAnimationFrame(r));
+          const canvas = await window.html2canvas(target, {
+            backgroundColor: '#080c16', scale: 2, useCORS: true, allowTaint: true, logging: false,
+            width: target.scrollWidth, height: target.scrollHeight,
+            windowWidth: target.scrollWidth, windowHeight: target.scrollHeight,
+            onclone: (clonedDoc) => {
+              const allEls = clonedDoc.querySelectorAll('*');
+              allEls.forEach(el => {
+                const s = el.style;
+                const bg = (s.background || '') + (s.backgroundImage || '');
+                const usesClip = s.webkitBackgroundClip === 'text' || s.backgroundClip === 'text' || s.webkitTextFillColor === 'transparent';
+                if (usesClip && bg.includes('linear-gradient')) {
+                  const match = bg.match(/#[a-fA-F0-9]{3,6}|rgba?\([^)]+\)/);
+                  const color = match ? match[0] : '#bef264';
+                  s.background = 'none'; s.backgroundImage = 'none';
+                  s.webkitBackgroundClip = 'unset'; s.backgroundClip = 'unset';
+                  s.webkitTextFillColor = color; s.color = color;
+                }
+              });
+              const style = clonedDoc.createElement('style');
+              style.textContent = `* { animation: none !important; transition: none !important; backdrop-filter: none !important; -webkit-backdrop-filter: none !important; }`;
+              clonedDoc.head.appendChild(style);
+            },
+          });
+          const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png', 0.95));
+          if (!blob) throw new Error('toBlob null');
+          const blobUrl = URL.createObjectURL(blob);
+          const dataUrl = canvas.toDataURL('image/png');
+          const filename = `PS_${label}_${coach}_${new Date().toISOString().slice(0,10)}.png`;
+          setImagePreview({ dataUrl, blobUrl, blob, filename });
+        } catch (e) { console.error(e); alert('Image generation failed: ' + (e.message || e)); }
+        setExporting(null);
+      };
+
+      const handleShare = async () => {
+        if (!imagePreview?.blob) return;
+        try {
+          const file = new File([imagePreview.blob], imagePreview.filename, { type: 'image/png' });
+          if (navigator.canShare && navigator.canShare({ files: [file] })) {
+            await navigator.share({ files: [file], title: 'PS Coaching Schedule' });
+          } else if (navigator.share) { await navigator.share({ title: 'PS Coaching Schedule' }); }
+          else { alert('Sharing not supported. Long-press the image to save.'); }
+        } catch (e) { if (e.name !== 'AbortError') console.error(e); }
+      };
+      const handleDownload = () => {
+        if (!imagePreview?.blobUrl) return;
+        const link = document.createElement('a');
+        link.href = imagePreview.blobUrl; link.download = imagePreview.filename;
+        document.body.appendChild(link); link.click(); document.body.removeChild(link);
+      };
+      const handleOpenInNewTab = () => { if (imagePreview?.blobUrl) window.open(imagePreview.blobUrl, '_blank'); };
+
+      const ROW_HEIGHT = 42;
+      const HEADER_HEIGHT = 44;
+      const TIME_COL_WIDTH = 40;
+
+      return (
+        <div style={{ fontFamily: "'Outfit', system-ui, sans-serif" }} className="min-h-screen w-full text-slate-100">
+
+          {updateAvailable && (
+            <div className="sticky top-0 z-[80] bg-[#bef264] text-slate-900 px-4 py-2 text-sm font-bold flex items-center justify-between">
+              <span>New version available</span>
+              <button onClick={() => window.location.reload()} className="px-3 py-1 rounded-md bg-slate-900 text-[#bef264] text-xs">Update</button>
+            </div>
+          )}
+
+          <div id="schedule-only-export" style={{ background: 'linear-gradient(180deg, #080c16 0%, #0d1422 50%, #121828 100%)' }} className="relative overflow-hidden">
+            <div style={{ position: 'absolute', top: '-150px', left: '-100px', width: '400px', height: '400px', background: 'radial-gradient(circle, rgba(190,242,100,0.12) 0%, transparent 70%)', pointerEvents: 'none' }} />
+            <div style={{ position: 'absolute', top: '30%', right: '-150px', width: '400px', height: '400px', background: 'radial-gradient(circle, rgba(125,211,252,0.1) 0%, transparent 70%)', pointerEvents: 'none' }} />
+            <div style={{ position: 'absolute', bottom: '5%', left: '-100px', width: '350px', height: '350px', background: 'radial-gradient(circle, rgba(249,168,212,0.08) 0%, transparent 70%)', pointerEvents: 'none' }} />
+
+            <div className="max-w-5xl mx-auto px-3 sm:px-8 py-4 sm:py-8 relative">
+              <header className="text-center mb-4 anim-fade">
+                <div className="inline-flex items-center gap-2 mb-1.5">
+                  <div className="w-1.5 h-1.5 rounded-full" style={{ background: '#bef264' }} />
+                  <div className="w-1.5 h-1.5 rounded-full" style={{ background: '#7dd3fc' }} />
+                  <div className="w-1.5 h-1.5 rounded-full" style={{ background: '#fcd34d' }} />
+                  <div className="w-1.5 h-1.5 rounded-full" style={{ background: '#f9a8d4' }} />
+                  <span className="text-slate-300 text-[10px] sm:text-xs font-bold tracking-[0.35em] ml-2">PADEL SOCIETY</span>
+                </div>
+                <h1 className="text-2xl sm:text-4xl font-black tracking-tight mb-2 leading-none">
+                  <span style={{ background: 'linear-gradient(135deg, #bef264 0%, #7dd3fc 50%, #f9a8d4 100%)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text' }}>WEEKLY</span>
+                  <span className="text-slate-100"> SCHEDULE</span>
+                </h1>
+                <button onClick={() => { setTempCoach(coach); setEditCoach(true); }} className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full active:scale-95 transition-all" style={{ background: 'linear-gradient(135deg, rgba(190,242,100,0.15) 0%, rgba(125,211,252,0.15) 100%)', border: '1px solid rgba(190,242,100,0.4)' }}>
+                  <span className="text-[10px] font-bold tracking-[0.2em]" style={{ color: '#bef264' }}>COACH</span>
+                  <span className="text-slate-100 font-bold text-sm">{coach}</span>
+                </button>
+                <div className="mono text-slate-400 text-xs sm:text-sm tracking-[0.2em] mt-2">MAY 18 — MAY 21, 2026</div>
+              </header>
+
+              <div className="anim-fade" style={{ animationDelay: '120ms' }}>
+                <div className="grid mb-1" style={{ gridTemplateColumns: `${TIME_COL_WIDTH}px repeat(4, 1fr)`, gap: '4px' }}>
+                  <div />
+                  {days.map((day, dayIdx) => {
+                    const color = DAY_COLORS[dayIdx];
+                    return (
+                      <div key={dayIdx} className="rounded-xl flex flex-col items-center justify-center" style={{ height: `${HEADER_HEIGHT}px`, background: `linear-gradient(180deg, rgba(${color.rgb}, 0.18) 0%, rgba(${color.rgb}, 0.08) 100%)`, border: `1px solid rgba(${color.rgb}, 0.35)`, borderTop: `2px solid ${color.main}` }}>
+                        <div className="font-black text-sm sm:text-base tracking-wider" style={{ color: color.main, textShadow: `0 0 12px rgba(${color.rgb}, 0.4)` }}>{day.day}</div>
+                        <div className="mono text-[9px] sm:text-[10px] text-slate-300 font-semibold tracking-wider mt-0.5">{day.date.replace('MAY ', '')}</div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                <div className="grid relative" style={{ gridTemplateColumns: `${TIME_COL_WIDTH}px repeat(4, 1fr)`, gap: '4px', height: `${HOURS.length * ROW_HEIGHT + (HOURS.length - 1) * 4}px` }}>
+                  <div className="relative h-full">
+                    {HOURS.map((h, i) => (
+                      <div key={`time-${h}`} className="absolute flex items-start justify-end pr-2" style={{ top: `${i * (ROW_HEIGHT + 4)}px`, height: `${ROW_HEIGHT}px`, right: 0, left: 0 }}>
+                        <div className="text-right -mt-1">
+                          <span className="mono text-[11px] sm:text-xs text-slate-400 font-bold">{fmtHour(h)}</span>
+                          <span className="mono text-[8px] sm:text-[9px] text-slate-600 ml-0.5">{ampm(h)}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {days.map((day, dayIdx) => {
+                    const color = DAY_COLORS[dayIdx];
+                    return (
+                      <div key={`col-${dayIdx}`} className="relative h-full">
+                        {HOURS.map((h, i) => {
+                          const covered = day.slots.some(s => h >= s.startHour && h < s.startHour + s.duration);
+                          if (covered) return null;
+                          return (
+                            <button key={`empty-${i}`} onClick={() => openEdit(dayIdx, 'new', h)} className="absolute rounded-md transition-all active:scale-95 group" style={{ top: `${i * (ROW_HEIGHT + 4)}px`, height: `${ROW_HEIGHT}px`, left: 0, right: 0, background: `rgba(${color.rgb}, 0.025)`, border: `1px dashed rgba(${color.rgb}, 0.12)` }}>
+                              <span className="text-slate-700 text-lg opacity-0 group-hover:opacity-100 transition-opacity">+</span>
+                            </button>
+                          );
+                        })}
+                        {day.slots.map((slot, slotIdx) => {
+                          const rowOffset = slot.startHour - START_HOUR;
+                          const top = rowOffset * (ROW_HEIGHT + 4);
+                          const height = slot.duration * ROW_HEIGHT + (slot.duration - 1) * 4;
+                          const isOpen = !slot.student;
+                          const longSlot = slot.duration === 2;
+                          return (
+                            <button key={`slot-${slotIdx}`} onClick={() => openEdit(dayIdx, slotIdx)}
+                              className="absolute rounded-lg active:scale-[0.97] transition-all flex flex-col items-center justify-center"
+                              style={{
+                                top: `${top}px`,
+                                height: `${height}px`,
+                                left: 0, right: 0,
+                                background: isOpen ? `rgba(${color.rgb}, 0.1)` : `linear-gradient(135deg, rgba(${color.rgb}, 0.95) 0%, rgba(${color.rgb}, 0.75) 100%)`,
+                                border: isOpen ? `1.5px dashed rgba(${color.rgb}, 0.6)` : `1px solid rgba(${color.rgb}, 1)`,
+                                boxShadow: isOpen ? 'none' : `0 4px 14px rgba(${color.rgb}, 0.25)`,
+                                color: isOpen ? color.main : '#0f1729',
+                                padding: '2px 3px',
+                              }}>
+                              {isOpen ? (
+                                <React.Fragment>
+                                  <div style={{ fontSize: '9px', fontWeight: 'bold', letterSpacing: '0.15em' }} className="pulse-fade">OPEN</div>
+                                  <div className="mono" style={{ fontSize: '8px', opacity: 0.6, marginTop: '1px' }}>{fmtHour(slot.startHour)}{ampm(slot.startHour)[0]}</div>
+                                </React.Fragment>
+                              ) : (
+                                <React.Fragment>
+                                  <div className="font-black text-center w-full" style={{ fontSize: slot.student.length > 10 ? '10px' : slot.student.length > 7 ? '11px' : '12px', lineHeight: 1.05, wordBreak: 'break-word', padding: '0 1px' }}>
+                                    {slot.student}
+                                  </div>
+                                  {slot.lessonType && slot.lessonType.length > 0 && (
+                                    <div className="flex flex-wrap items-center justify-center" style={{ gap: '2px', marginTop: '2px', maxWidth: '100%', padding: '0 1px' }}>
+                                      {slot.lessonType.map((t, idx) => (
+                                        <span key={idx} style={{
+                                          fontSize: '8px', fontWeight: 900, padding: '1px 4px', borderRadius: '3px',
+                                          background: typeColor(t), color: '#0f1729', lineHeight: 1.1, whiteSpace: 'nowrap',
+                                          boxShadow: '0 0 0 1px rgba(15,23,41,0.15)'
+                                        }}>{t}</span>
+                                      ))}
+                                    </div>
+                                  )}
+                                  {longSlot && (
+                                    <div className="mono" style={{ fontSize: '8px', fontWeight: 'bold', marginTop: '2px', opacity: 0.7 }}>2H</div>
+                                  )}
+                                </React.Fragment>
+                              )}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-2 mt-3 text-[11px] text-slate-400">
+                <div className="flex items-center gap-1.5"><div className="w-3 h-3 rounded" style={{ background: 'linear-gradient(135deg, #bef264, #a3e635)' }} /><span>Booked</span></div>
+                <div className="flex items-center gap-1.5"><div className="w-3 h-3 rounded border-2 border-dashed" style={{ borderColor: '#bef264', background: 'rgba(190,242,100,0.1)' }} /><span>Open</span></div>
+                <div className="flex items-center gap-1.5"><span className="mono text-[9px] font-bold px-1.5 rounded text-slate-900" style={{ background: '#bef264' }}>2H</span><span>2-hr</span></div>
+              </div>
+
+              <footer className="text-center mt-5">
+                <div className="inline-flex items-center gap-2 text-slate-300 font-bold text-xs tracking-[0.2em]">
+                  <div className="flex gap-0.5">
+                    <div className="w-1.5 h-1.5 rounded-full" style={{ background: '#bef264' }} />
+                    <div className="w-1.5 h-1.5 rounded-full" style={{ background: '#7dd3fc' }} />
+                    <div className="w-1.5 h-1.5 rounded-full" style={{ background: '#fcd34d' }} />
+                    <div className="w-1.5 h-1.5 rounded-full" style={{ background: '#f9a8d4' }} />
+                  </div>
+                  <span className="ml-1">PS COACHING</span>
+                </div>
+              </footer>
+            </div>
+          </div>
+
+          <div id="breakdown-only-export" style={{ background: 'linear-gradient(180deg, #080c16 0%, #0d1422 50%, #121828 100%)' }} className="relative overflow-hidden">
+            <div style={{ position: 'absolute', top: '-100px', left: '-100px', width: '350px', height: '350px', background: 'radial-gradient(circle, rgba(190,242,100,0.1) 0%, transparent 70%)', pointerEvents: 'none' }} />
+            <div style={{ position: 'absolute', bottom: '0', right: '-150px', width: '400px', height: '400px', background: 'radial-gradient(circle, rgba(249,168,212,0.08) 0%, transparent 70%)', pointerEvents: 'none' }} />
+
+            <div className="max-w-5xl mx-auto px-3 sm:px-8 py-4 sm:py-7 relative">
+              <header className="text-center mb-4 anim-fade">
+                <div className="inline-flex items-center gap-2 mb-1.5">
+                  <div className="w-1.5 h-1.5 rounded-full" style={{ background: '#bef264' }} />
+                  <div className="w-1.5 h-1.5 rounded-full" style={{ background: '#7dd3fc' }} />
+                  <div className="w-1.5 h-1.5 rounded-full" style={{ background: '#fcd34d' }} />
+                  <div className="w-1.5 h-1.5 rounded-full" style={{ background: '#f9a8d4' }} />
+                  <span className="text-slate-300 text-[10px] sm:text-xs font-bold tracking-[0.35em] ml-2">PADEL SOCIETY</span>
+                </div>
+                <h1 className="text-2xl sm:text-4xl font-black tracking-tight mb-2 leading-none">
+                  <span style={{ background: 'linear-gradient(135deg, #bef264 0%, #7dd3fc 50%, #f9a8d4 100%)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text' }}>MEMBER</span>
+                  <span className="text-slate-100"> BREAKDOWN</span>
+                </h1>
+                <div className="inline-flex items-center gap-2.5 px-4 py-2 rounded-full" style={{ background: 'linear-gradient(135deg, rgba(190,242,100,0.15) 0%, rgba(125,211,252,0.15) 100%)', border: '1px solid rgba(190,242,100,0.4)' }}>
+                  <span className="text-[10px] font-bold tracking-[0.2em]" style={{ color: '#bef264' }}>COACH</span>
+                  <span className="text-slate-100 font-bold text-sm">{coach}</span>
+                </div>
+                <div className="mono text-slate-400 text-xs sm:text-sm tracking-[0.2em] mt-2">MAY 18 — MAY 21, 2026</div>
+              </header>
+
+              <section className="mt-10 anim-fade" style={{ animationDelay: '240ms' }}>
+                <div className="flex items-baseline justify-between mb-4 px-1">
+                  <div>
+                    <div className="text-[10px] sm:text-xs font-bold tracking-[0.35em]" style={{ color: '#bef264' }}>MEMBER BREAKDOWN</div>
+                    <div className="text-slate-500 text-[11px] mt-0.5">Who's coming, what they're working on</div>
+                  </div>
+                  <div className="text-right">
+                    <div className="mono text-2xl sm:text-3xl font-black" style={{ background: 'linear-gradient(135deg, #bef264 0%, #7dd3fc 100%)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text' }}>
+                      {memberStats.members.length}
+                    </div>
+                    <div className="text-[9px] text-slate-500 tracking-wider -mt-1">STUDENTS · {memberStats.totalLessons} LESSONS · {memberStats.totalHours} HOURS</div>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {memberStats.members.map((member) => {
+                    const tally = Object.entries(member.typeCounts).sort((a,b) => b[1] - a[1]);
+                    return (
+                      <div key={member.name} className="rounded-2xl p-4 border border-slate-700/60" style={{ background: 'linear-gradient(180deg, rgba(24,33,50,0.85) 0%, rgba(18,24,40,0.85) 100%)' }}>
+                        <div className="flex items-start justify-between mb-2 gap-2">
+                          <div className="font-black text-base text-slate-100 leading-tight break-words flex-1 min-w-0">{member.name}</div>
+                          <div className="flex items-center gap-0.5 mono font-bold text-sm px-2.5 py-1 rounded-full shrink-0" style={{ background: 'rgba(190,242,100,0.12)', color: '#bef264', border: '1px solid rgba(190,242,100,0.3)' }}>
+                            {member.sessions.length}<span className="text-[10px] opacity-60 ml-0.5">×</span>
+                          </div>
+                        </div>
+
+                        {tally.length > 0 && (
+                          <div className="flex flex-wrap gap-1 mb-2.5">
+                            {tally.map(([type, count]) => (
+                              <span key={type} className="text-[10px] font-bold px-2 py-0.5 rounded-full" style={{ background: `${typeColor(type)}22`, color: typeColor(type), border: `1px solid ${typeColor(type)}44` }}>
+                                {type} ×{count}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+
+                        <div className="border-t border-slate-700/40 pt-2 space-y-1">
+                          {member.sessions.map((s, i) => {
+                            const c = DAY_COLORS[s.dayIdx];
+                            return (
+                              <div key={i}>
+                                <div className="flex flex-wrap items-baseline gap-x-2 text-[11px]">
+                                  <span className="mono font-bold w-9 shrink-0" style={{ color: c.main }}>{s.day}</span>
+                                  <span className="mono text-slate-400 w-[78px] shrink-0">{fmtTimeRange(s.startHour, s.duration)}</span>
+                                  <span className="text-slate-200 flex-1 min-w-0">
+                                    {s.lessonType && s.lessonType.length > 0 ? (
+                                      <span className="font-semibold">
+                                        {s.lessonType.map((t, idx) => (
+                                          <span key={idx}>
+                                            {idx > 0 && <span className="text-slate-600"> · </span>}
+                                            <span style={{ color: typeColor(t) }}>{t}</span>
+                                          </span>
+                                        ))}
+                                      </span>
+                                    ) : (
+                                      <span className="text-slate-600 italic">—</span>
+                                    )}
+                                    {s.coStudents.length > 0 && (
+                                      <span className="text-slate-500 text-[10px] ml-1">+ {s.coStudents.join(', ')}</span>
+                                    )}
+                                    {s.duration === 2 && (
+                                      <span className="text-slate-500 text-[10px] ml-1">· 2H</span>
+                                    )}
+                                  </span>
+                                </div>
+                                {s.notes && (
+                                  <div className="text-[10px] text-slate-400 italic mt-0.5 ml-3 pl-2 leading-snug border-l-2" style={{ borderColor: `rgba(${c.rgb}, 0.4)` }}>
+                                    {s.notes}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </section>
+
+              <footer className="text-center mt-5">
+                <div className="inline-flex items-center gap-2 text-slate-300 font-bold text-xs tracking-[0.2em]">
+                  <div className="flex gap-0.5">
+                    <div className="w-1.5 h-1.5 rounded-full" style={{ background: '#bef264' }} />
+                    <div className="w-1.5 h-1.5 rounded-full" style={{ background: '#7dd3fc' }} />
+                    <div className="w-1.5 h-1.5 rounded-full" style={{ background: '#fcd34d' }} />
+                    <div className="w-1.5 h-1.5 rounded-full" style={{ background: '#f9a8d4' }} />
+                  </div>
+                  <span className="ml-1">PS COACHING</span>
+                </div>
+              </footer>
+            </div>
+          </div>
+
+          <div style={{ background: '#121828' }} className="border-t border-slate-800">
+            <div className="max-w-5xl mx-auto px-4 sm:px-8 py-5 flex flex-col gap-3 items-center justify-center">
+              <div className="flex flex-col sm:flex-row gap-2.5 w-full sm:w-auto">
+                <button onClick={() => saveAsImage('schedule-only-export', 'Schedule')} disabled={!!exporting || !h2cReady} className="w-full sm:w-auto px-5 py-3 rounded-xl font-bold text-slate-900 transition-all active:scale-95 disabled:opacity-50 inline-flex items-center justify-center gap-2 text-sm" style={{ background: exporting === 'Schedule' ? 'linear-gradient(135deg, #94a3b8 0%, #cbd5e1 100%)' : 'linear-gradient(135deg, #bef264 0%, #7dd3fc 100%)', boxShadow: exporting === 'Schedule' ? 'none' : '0 6px 18px rgba(190,242,100,0.22)' }}>
+                  {exporting === 'Schedule' ? (
+                    <React.Fragment><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" className="animate-spin"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>Saving...</React.Fragment>
+                  ) : (
+                    <React.Fragment><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>Save Schedule</React.Fragment>
+                  )}
+                </button>
+                <button onClick={() => saveAsImage('breakdown-only-export', 'Breakdown')} disabled={!!exporting || !h2cReady} className="w-full sm:w-auto px-5 py-3 rounded-xl font-bold text-slate-900 transition-all active:scale-95 disabled:opacity-50 inline-flex items-center justify-center gap-2 text-sm" style={{ background: exporting === 'Breakdown' ? 'linear-gradient(135deg, #94a3b8 0%, #cbd5e1 100%)' : 'linear-gradient(135deg, #fcd34d 0%, #f9a8d4 100%)', boxShadow: exporting === 'Breakdown' ? 'none' : '0 6px 18px rgba(249,168,212,0.22)' }}>
+                  {exporting === 'Breakdown' ? (
+                    <React.Fragment><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" className="animate-spin"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>Saving...</React.Fragment>
+                  ) : (
+                    <React.Fragment><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>Save Breakdown</React.Fragment>
+                  )}
+                </button>
+              </div>
+              <div className="flex items-center gap-3 mt-1">
+                <button onClick={() => setShowShareModal(true)} className="inline-flex items-center gap-1.5 text-xs font-bold text-slate-300 hover:text-slate-100 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 transition active:scale-95">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg>
+                  Save / Share
+                </button>
+                <button onClick={() => setConfirmReset(true)} className="text-[11px] text-slate-600 hover:text-slate-400 underline underline-offset-2">Reset</button>
+              </div>
+            </div>
+          </div>
+
+          {edit && (
+            <div className="fixed inset-0 bg-black/70 backdrop-blur-md z-50 flex items-end sm:items-center justify-center sm:p-4 anim-pop" onClick={() => setEdit(null)}>
+              <div className="bg-[#182132] border border-slate-700 rounded-t-3xl sm:rounded-3xl w-full sm:max-w-md p-6 sm:p-7 anim-slide max-h-[92vh] overflow-y-auto" onClick={e => e.stopPropagation()} style={{ fontFamily: "'Outfit', system-ui, sans-serif" }}>
+                <div className="flex justify-between items-center mb-5">
+                  <div>
+                    <div className="text-xl font-black text-slate-100">{edit.slotIdx === 'new' ? 'New slot' : 'Edit slot'}</div>
+                    <div className="mono text-xs tracking-wider mt-0.5" style={{ color: DAY_COLORS[edit.dayIdx].main }}>{days[edit.dayIdx].day} · {days[edit.dayIdx].date}</div>
+                  </div>
+                  <div className="mono text-base font-bold px-3 py-1.5 rounded-lg" style={{ color: DAY_COLORS[edit.dayIdx].main, background: `rgba(${DAY_COLORS[edit.dayIdx].rgb}, 0.12)`, border: `1px solid rgba(${DAY_COLORS[edit.dayIdx].rgb}, 0.3)` }}>{fmtTimeRange(edit.startHour, edit.duration)}</div>
+                </div>
+
+                <div className="space-y-5">
+                  <div>
+                    <label className="block text-[10px] font-bold tracking-[0.2em] mb-2" style={{ color: DAY_COLORS[edit.dayIdx].main }}>START TIME</label>
+                    <select value={edit.startHour} onChange={e => setEdit({...edit, startHour: parseInt(e.target.value, 10)})} className="w-full mono bg-slate-900/50 border border-slate-700 rounded-xl px-4 py-3 text-slate-100 focus:outline-none transition appearance-none" style={{ paddingRight: '40px' }}>
+                      {HOURS.map(h => (<option key={h} value={h}>{fmtHour(h)} {ampm(h)}</option>))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] font-bold tracking-[0.2em] mb-2" style={{ color: DAY_COLORS[edit.dayIdx].main }}>DURATION</label>
+                    <div className="grid grid-cols-2 gap-2">
+                      {[1, 2].map(d => (
+                        <button key={d} onClick={() => setEdit({...edit, duration: d})} className="py-3 rounded-xl font-bold transition active:scale-95" style={{ background: edit.duration === d ? DAY_COLORS[edit.dayIdx].main : 'rgba(15, 23, 42, 0.5)', color: edit.duration === d ? '#0f1729' : '#94a3b8', border: edit.duration === d ? 'none' : '1px solid rgb(51, 65, 85)' }}>{d}H{d === 2 && ' ⏱'}</button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] font-bold tracking-[0.2em] mb-2" style={{ color: DAY_COLORS[edit.dayIdx].main }}>STUDENT</label>
+                    <input type="text" value={edit.student} onChange={e => setEdit({...edit, student: e.target.value})} placeholder="Leave empty to mark as OPEN" className="w-full bg-slate-900/50 border border-slate-700 rounded-xl px-4 py-3 text-slate-100 placeholder-slate-600 focus:outline-none transition" />
+                    <div className="text-[10px] text-slate-500 mt-1.5">Multiple students = comma separated (e.g. <span className="mono">Jiwon, HK</span>)</div>
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] font-bold tracking-[0.2em] mb-2" style={{ color: DAY_COLORS[edit.dayIdx].main }}>LESSON TYPES <span className="opacity-50 font-normal">(select multiple)</span></label>
+                    <div className="flex flex-wrap gap-1.5 mb-2">
+                      {lessonTypes.map(t => {
+                        const selected = (edit.lessonType || []).includes(t);
+                        const isCustom = customLessonTypes.includes(t);
+                        const tc = typeColor(t);
+                        return (
+                          <button
+                            key={t}
+                            onClick={() => {
+                              const cur = edit.lessonType || [];
+                              setEdit({...edit, lessonType: cur.includes(t) ? cur.filter(x => x !== t) : [...cur, t]});
+                            }}
+                            className="px-3 py-1.5 rounded-full text-[12px] font-bold transition active:scale-95 inline-flex items-center"
+                            style={{ background: selected ? tc : `${tc}15`, color: selected ? '#0f1729' : tc, border: selected ? 'none' : `1px solid ${tc}40` }}
+                          >
+                            {selected ? '✓ ' : ''}{t}
+                            {isCustom && (
+                              <span
+                                onClick={(e) => { e.stopPropagation(); setConfirmDeleteType(t); }}
+                                role="button"
+                                className="ml-1.5 inline-flex items-center justify-center w-4 h-4 rounded-full text-[11px] leading-none transition hover:scale-110"
+                                style={{ background: selected ? 'rgba(15,23,41,0.25)' : `${tc}30`, color: 'inherit' }}
+                                title="Delete this custom type"
+                              >×</span>
+                            )}
+                          </button>
+                        );
+                      })}
+                      {(edit.lessonType || []).filter(t => !lessonTypes.includes(t)).map(t => (
+                        <button
+                          key={t}
+                          onClick={() => setEdit({...edit, lessonType: (edit.lessonType || []).filter(x => x !== t)})}
+                          className="px-3 py-1.5 rounded-full text-[12px] font-bold transition active:scale-95 inline-flex items-center gap-1"
+                          style={{ background: '#94a3b8', color: '#0f1729' }}
+                          title="Orphan tag from old data — tap to remove"
+                        >
+                          {t}<span className="opacity-70 ml-0.5">×</span>
+                        </button>
+                      ))}
+                    </div>
+                    <input
+                      type="text"
+                      placeholder="New lesson type — press Enter to save (e.g. Defend)"
+                      className="w-full bg-slate-900/50 border border-slate-700 rounded-xl px-3 py-2 text-sm text-slate-100 placeholder-slate-600 focus:outline-none transition"
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          const v = e.target.value.trim();
+                          if (v) {
+                            addCustomLessonType(v);
+                            if (!(edit.lessonType || []).includes(v)) {
+                              setEdit({...edit, lessonType: [...(edit.lessonType || []), v]});
+                            }
+                          }
+                          e.target.value = '';
+                        }
+                      }}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] font-bold tracking-[0.2em] mb-2" style={{ color: DAY_COLORS[edit.dayIdx].main }}>NOTES <span className="opacity-50 font-normal">(shown in breakdown only)</span></label>
+                    <textarea
+                      value={edit.notes || ''}
+                      onChange={e => setEdit({...edit, notes: e.target.value})}
+                      placeholder="Optional details — e.g., what to focus on, technique to work on..."
+                      rows={2}
+                      className="w-full bg-slate-900/50 border border-slate-700 rounded-xl px-3 py-2 text-sm text-slate-100 placeholder-slate-600 focus:outline-none transition resize-none"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex gap-2 mt-7">
+                  {edit.slotIdx !== 'new' && (<button onClick={removeSlot} className="px-4 py-3.5 rounded-xl bg-red-500/10 border border-red-500/30 text-red-400 hover:bg-red-500/20 active:scale-95 font-semibold transition-all">Delete</button>)}
+                  <button onClick={() => setEdit(null)} className="flex-1 px-4 py-3.5 rounded-xl bg-slate-700/50 hover:bg-slate-700 active:scale-95 text-slate-300 font-semibold transition-all">Cancel</button>
+                  <button onClick={saveEdit} className="flex-1 px-4 py-3.5 rounded-xl active:scale-95 text-slate-900 font-bold transition-all" style={{ background: DAY_COLORS[edit.dayIdx].main }}>Save</button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {editCoach && (
+            <div className="fixed inset-0 bg-black/70 backdrop-blur-md z-50 flex items-center justify-center p-4 anim-pop" onClick={() => setEditCoach(false)}>
+              <div className="bg-[#182132] border border-slate-700 rounded-3xl w-full max-w-sm p-7 anim-slide" onClick={e => e.stopPropagation()} style={{ fontFamily: "'Outfit', system-ui, sans-serif" }}>
+                <div className="text-xl font-black text-slate-100 mb-1">Coach name</div>
+                <div className="text-xs text-slate-500 mb-5">Coach name shown at the top</div>
+                <input type="text" value={tempCoach} onChange={e => setTempCoach(e.target.value)} autoFocus className="w-full bg-slate-900/50 border border-slate-700 rounded-xl px-4 py-3 text-slate-100 focus:border-[#bef264] focus:outline-none transition" />
+                <div className="flex gap-2 mt-6">
+                  <button onClick={() => setEditCoach(false)} className="flex-1 px-4 py-3.5 rounded-xl bg-slate-700/50 hover:bg-slate-700 text-slate-300 font-semibold transition">Cancel</button>
+                  <button onClick={() => { if (tempCoach.trim()) setCoach(tempCoach.trim()); setEditCoach(false); }} className="flex-1 px-4 py-3.5 rounded-xl text-slate-900 font-bold transition" style={{ background: 'linear-gradient(135deg, #bef264 0%, #7dd3fc 100%)' }}>Save</button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {confirmReset && (
+            <div className="fixed inset-0 bg-black/70 backdrop-blur-md z-50 flex items-center justify-center p-4 anim-pop" onClick={() => setConfirmReset(false)}>
+              <div className="bg-[#182132] border border-slate-700 rounded-3xl w-full max-w-sm p-7 anim-slide" onClick={e => e.stopPropagation()} style={{ fontFamily: "'Outfit', system-ui, sans-serif" }}>
+                <div className="text-xl font-black text-slate-100 mb-2">Reset everything?</div>
+                <div className="text-sm text-slate-400 mb-6">All changes will be lost and the schedule will revert to defaults.</div>
+                <div className="flex gap-2">
+                  <button onClick={() => setConfirmReset(false)} className="flex-1 px-4 py-3.5 rounded-xl bg-slate-700/50 hover:bg-slate-700 text-slate-300 font-semibold transition">Cancel</button>
+                  <button onClick={doReset} className="flex-1 px-4 py-3.5 rounded-xl bg-red-500/20 border border-red-500/30 text-red-400 hover:bg-red-500/30 font-bold transition">Reset</button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {loadBanner && (
+            <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[70] anim-pop">
+              <div className="px-4 py-2.5 rounded-full text-sm font-bold text-slate-900 shadow-2xl inline-flex items-center gap-2" style={{ background: 'linear-gradient(135deg, #bef264 0%, #7dd3fc 100%)' }}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><polyline points="20 6 9 17 4 12"/></svg>
+                Shared schedule loaded
+              </div>
+            </div>
+          )}
+
+          {showShareModal && (
+            <div className="fixed inset-0 bg-black/70 backdrop-blur-md z-50 flex items-end sm:items-center justify-center sm:p-4 anim-pop" onClick={() => setShowShareModal(false)}>
+              <div className="bg-[#182132] border border-slate-700 rounded-t-3xl sm:rounded-3xl w-full sm:max-w-md p-6 sm:p-7 anim-slide max-h-[92vh] overflow-y-auto" onClick={e => e.stopPropagation()} style={{ fontFamily: "'Outfit', system-ui, sans-serif" }}>
+                <div className="flex items-start justify-between mb-4">
+                  <div>
+                    <div className="text-xl font-black text-slate-100 inline-flex items-center gap-2">
+                      <span style={{ color: '#bef264' }}>✓</span> Auto-saved
+                    </div>
+                    <div className="text-xs text-slate-400 mt-0.5">Your schedule is saved on this device. Copy this link to share or back up.</div>
+                  </div>
+                  <button onClick={() => setShowShareModal(false)} className="text-slate-500 hover:text-slate-300 text-2xl leading-none w-8 h-8 flex items-center justify-center shrink-0">×</button>
+                </div>
+
+                <div className="space-y-5">
+                  <div>
+                    <label className="block text-[10px] font-bold tracking-[0.2em] text-[#bef264] mb-2">SHARE LINK</label>
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        readOnly
+                        value={shareUrl}
+                        onClick={e => e.target.select()}
+                        className="flex-1 mono text-[10px] bg-slate-900/70 border border-slate-700 rounded-xl px-3 py-2.5 text-slate-300 focus:outline-none truncate"
+                      />
+                      <button onClick={handleCopyShare} className="px-4 py-2.5 rounded-xl font-bold text-slate-900 transition active:scale-95 inline-flex items-center justify-center gap-1.5 text-sm shrink-0" style={{ background: copySuccess ? 'linear-gradient(135deg, #34d399 0%, #6ee7b7 100%)' : 'linear-gradient(135deg, #bef264 0%, #7dd3fc 100%)' }}>
+                        {copySuccess ? (
+                          <React.Fragment><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><polyline points="20 6 9 17 4 12"/></svg>Copied</React.Fragment>
+                        ) : (
+                          <React.Fragment><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>Copy</React.Fragment>
+                        )}
+                      </button>
+                    </div>
+                    <div className="text-[10px] text-slate-500 mt-1.5 leading-snug">
+                      Anyone with this link can load this exact schedule. The link contains all data (no server needed).
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-3 text-slate-600 text-[10px] tracking-widest font-bold">
+                    <div className="flex-1 h-px bg-slate-700"></div>
+                    OR
+                    <div className="flex-1 h-px bg-slate-700"></div>
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] font-bold tracking-[0.2em] text-[#f9a8d4] mb-2">LOAD A SHARED SCHEDULE</label>
+                    <textarea
+                      value={pasteInput}
+                      onChange={e => setPasteInput(e.target.value)}
+                      placeholder="Paste a share link or code here..."
+                      rows={3}
+                      className="w-full mono text-[10px] bg-slate-900/70 border border-slate-700 rounded-xl px-3 py-2.5 text-slate-300 placeholder-slate-600 focus:outline-none focus:border-[#f9a8d4] transition resize-none"
+                    />
+                    <button onClick={handleLoadFromInput} disabled={!pasteInput.trim()} className="w-full mt-2 px-4 py-2.5 rounded-xl font-bold text-slate-900 transition active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed inline-flex items-center justify-center gap-1.5 text-sm" style={{ background: 'linear-gradient(135deg, #f9a8d4 0%, #fcd34d 100%)' }}>
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                      Load Schedule
+                    </button>
+                    <div className="text-[10px] text-slate-500 mt-1.5 leading-snug">
+                      Note: loading will replace your current schedule. Save the current link first if needed.
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {confirmDeleteType && (
+            <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-[60] flex items-center justify-center p-4 anim-pop" onClick={() => setConfirmDeleteType(null)}>
+              <div className="bg-[#182132] border border-slate-700 rounded-3xl w-full max-w-sm p-7 anim-slide" onClick={e => e.stopPropagation()} style={{ fontFamily: "'Outfit', system-ui, sans-serif" }}>
+                <div className="text-xl font-black text-slate-100 mb-2">Delete lesson type?</div>
+                <div className="text-sm text-slate-400 mb-3">
+                  <span className="font-bold px-2 py-0.5 rounded-full mr-1" style={{ background: `${typeColor(confirmDeleteType)}22`, color: typeColor(confirmDeleteType), border: `1px solid ${typeColor(confirmDeleteType)}44` }}>
+                    {confirmDeleteType}
+                  </span>
+                  will be removed from presets and all slots that currently use it.
+                </div>
+                <div className="flex gap-2 mt-5">
+                  <button onClick={() => setConfirmDeleteType(null)} className="flex-1 px-4 py-3.5 rounded-xl bg-slate-700/50 hover:bg-slate-700 text-slate-300 font-semibold transition">Cancel</button>
+                  <button onClick={() => deleteCustomLessonType(confirmDeleteType)} className="flex-1 px-4 py-3.5 rounded-xl bg-red-500/20 border border-red-500/30 text-red-400 hover:bg-red-500/30 font-bold transition">Delete</button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {imagePreview && (
+            <div className="fixed inset-0 bg-black/90 backdrop-blur-md z-50 flex flex-col items-center justify-center p-4 anim-pop" onClick={() => { if (imagePreview.blobUrl) URL.revokeObjectURL(imagePreview.blobUrl); setImagePreview(null); }}>
+              <div className="max-w-md w-full max-h-full overflow-y-auto" onClick={e => e.stopPropagation()} style={{ fontFamily: "'Outfit', system-ui, sans-serif" }}>
+                <div className="bg-[#182132] border border-slate-700 rounded-3xl p-5 anim-slide">
+                  <div className="flex items-center justify-between mb-3">
+                    <div>
+                      <div className="text-lg font-black text-slate-100">Image ready</div>
+                      <div className="text-[11px] text-slate-500 mt-0.5">Save using one of the options below</div>
+                    </div>
+                    <button onClick={() => { if (imagePreview.blobUrl) URL.revokeObjectURL(imagePreview.blobUrl); setImagePreview(null); }} className="text-slate-500 hover:text-slate-300 text-2xl leading-none w-8 h-8 flex items-center justify-center">×</button>
+                  </div>
+                  <div className="rounded-xl border border-slate-700 overflow-hidden bg-slate-900"><img src={imagePreview.dataUrl} alt="Schedule" className="w-full block" style={{ touchAction: 'manipulation' }} /></div>
+                  <div className="mt-4 text-[11px] text-slate-400 bg-slate-800/50 rounded-lg p-2.5 leading-relaxed">
+                    📱 <b className="text-slate-200">Mobile:</b> <b className="text-[#bef264]">Long-press</b> the image to save to Photos, or tap <b className="text-[#bef264]">Share</b><br/>
+                    💻 <b className="text-slate-200">Desktop:</b> Right-click image → Save, or click <b className="text-[#bef264]">Download</b>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 mt-3">
+                    {typeof navigator !== 'undefined' && navigator.share && (
+                      <button onClick={handleShare} className="col-span-2 px-4 py-3.5 rounded-xl text-slate-900 font-bold transition active:scale-95 inline-flex items-center justify-center gap-2" style={{ background: 'linear-gradient(135deg, #bef264 0%, #7dd3fc 50%, #f9a8d4 100%)' }}>
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg>
+                        Share / Save to Photos
+                      </button>
+                    )}
+                    <button onClick={handleDownload} className="px-4 py-3 rounded-xl bg-slate-700 hover:bg-slate-600 text-slate-100 font-semibold transition active:scale-95 inline-flex items-center justify-center gap-2 text-sm">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                      Download
+                    </button>
+                    <button onClick={handleOpenInNewTab} className="px-4 py-3 rounded-xl bg-slate-700 hover:bg-slate-600 text-slate-100 font-semibold transition active:scale-95 inline-flex items-center justify-center gap-2 text-sm">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+                      New tab
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<Schedule />);
+  </script>
+
+  <!-- Service worker registration -->
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('./sw.js').then((reg) => {
+          // Detect new SW waiting → notify page
+          if (reg.waiting) {
+            navigator.serviceWorker.controller && navigator.serviceWorker.controller.postMessage({ type: 'UPDATE_AVAILABLE' });
+          }
+          reg.addEventListener('updatefound', () => {
+            const nw = reg.installing;
+            if (!nw) return;
+            nw.addEventListener('statechange', () => {
+              if (nw.state === 'installed' && navigator.serviceWorker.controller) {
+                // New version installed, page is currently controlled by older SW
+                navigator.serviceWorker.controller.postMessage({ type: 'UPDATE_AVAILABLE' });
+                // Optionally activate immediately
+                nw.postMessage({ type: 'SKIP_WAITING' });
+              }
+            });
+          });
+        }).catch((err) => console.warn('SW registration failed:', err));
+
+        let refreshing = false;
+        navigator.serviceWorker.addEventListener('controllerchange', () => {
+          if (refreshing) return;
+          refreshing = true;
+          window.location.reload();
+        });
+      });
+    }
+  </script>
+</body>
+</html>
