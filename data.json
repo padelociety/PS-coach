@@ -159,6 +159,13 @@
           "notes": ""
         },
         {
+          "startHour": 10,
+          "duration": 1,
+          "student": "Jiwon",
+          "lessonType": [],
+          "notes": ""
+        },
+        {
           "startHour": 14,
           "duration": 1,
           "student": "David",
