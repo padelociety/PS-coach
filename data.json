@@ -84,7 +84,13 @@
           "startHour": 9,
           "duration": 1,
           "student": "Jieun",
-          "lessonType": [],
+          "lessonType": [
+            "Volley",
+            "Vibora",
+            "Bajada",
+            "Forehand",
+            "Backhand"
+          ],
           "notes": ""
         },
         {
