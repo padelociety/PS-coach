@@ -207,10 +207,8 @@
         {
           "startHour": 9,
           "duration": 1,
-          "student": "Jieun",
-          "lessonType": [
-            "Forehand"
-          ],
+          "student": "Jiwon",
+          "lessonType": [],
           "notes": ""
         }
       ]
