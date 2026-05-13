@@ -141,9 +141,7 @@
           "startHour": 7,
           "duration": 1,
           "student": "Jeehee, Jieun",
-          "lessonType": [
-            "Basics"
-          ],
+          "lessonType": [],
           "notes": ""
         },
         {
