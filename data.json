@@ -159,16 +159,6 @@
           "notes": ""
         },
         {
-          "startHour": 11,
-          "duration": 1,
-          "student": "Jiwon",
-          "lessonType": [
-            "Bandeja",
-            "Vibora"
-          ],
-          "notes": ""
-        },
-        {
           "startHour": 14,
           "duration": 1,
           "student": "David",
