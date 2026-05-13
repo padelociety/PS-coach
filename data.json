@@ -95,6 +95,13 @@
           "notes": ""
         },
         {
+          "startHour": 14,
+          "duration": 1,
+          "student": "HK",
+          "lessonType": [],
+          "notes": ""
+        },
+        {
           "startHour": 16,
           "duration": 1,
           "student": "Jiwon",
