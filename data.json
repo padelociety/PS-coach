@@ -57,9 +57,7 @@
           "startHour": 19,
           "duration": 1,
           "student": "David",
-          "lessonType": [
-            "Volley"
-          ],
+          "lessonType": [],
           "notes": ""
         },
         {
