@@ -190,27 +190,6 @@
           "student": "David, Jieun",
           "lessonType": [],
           "notes": ""
-        },
-        {
-          "startHour": 19,
-          "duration": 1,
-          "student": "",
-          "lessonType": [],
-          "notes": ""
-        },
-        {
-          "startHour": 20,
-          "duration": 1,
-          "student": "",
-          "lessonType": [],
-          "notes": ""
-        },
-        {
-          "startHour": 21,
-          "duration": 1,
-          "student": "",
-          "lessonType": [],
-          "notes": ""
         }
       ]
     },
