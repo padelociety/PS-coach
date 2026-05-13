@@ -11,9 +11,10 @@
           "duration": 1,
           "student": "Jiwon",
           "lessonType": [
-            "Forehand"
+            "Volley",
+            "Vibora"
           ],
-          "notes": "Work on topspin and follow-through"
+          "notes": ""
         },
         {
           "startHour": 15,
