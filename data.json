@@ -71,9 +71,7 @@
           "startHour": 21,
           "duration": 1,
           "student": "4 Group",
-          "lessonType": [
-            "Match"
-          ],
+          "lessonType": [],
           "notes": ""
         }
       ]
