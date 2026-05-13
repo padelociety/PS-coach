@@ -209,10 +209,12 @@
   ],
   "customLessonTypes": [
     "ProAm",
-    "Defense"
+    "Defense",
+    "Bajada"
   ],
   "customTypeColors": {
     "ProAm": "#ef4444",
-    "Defense": "#10b981"
+    "Defense": "#10b981",
+    "Bajada": "#a855f7"
   }
 }
