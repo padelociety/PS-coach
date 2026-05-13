@@ -105,9 +105,7 @@
           "startHour": 17,
           "duration": 1,
           "student": "David",
-          "lessonType": [
-            "Tactics"
-          ],
+          "lessonType": [],
           "notes": ""
         },
         {
