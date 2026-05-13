@@ -1,0 +1,59 @@
+{
+  "v": 1,
+  "coach": "Saul",
+  "customLessonTypes": [],
+  "customTypeColors": {},
+  "days": [
+    {
+      "day": "MON",
+      "date": "MAY 18",
+      "slots": [
+        { "startHour": 14, "duration": 1, "student": "Jiwon", "lessonType": ["Forehand"], "notes": "Work on topspin and follow-through" },
+        { "startHour": 15, "duration": 1, "student": "HK", "lessonType": ["Backhand"], "notes": "" },
+        { "startHour": 16, "duration": 1, "student": "", "lessonType": [], "notes": "" },
+        { "startHour": 17, "duration": 1, "student": "", "lessonType": [], "notes": "" },
+        { "startHour": 18, "duration": 1, "student": "Tomasco", "lessonType": ["Smash"], "notes": "" },
+        { "startHour": 19, "duration": 1, "student": "David", "lessonType": ["Volley"], "notes": "" },
+        { "startHour": 20, "duration": 1, "student": "Huny", "lessonType": ["Basics"], "notes": "" },
+        { "startHour": 21, "duration": 1, "student": "4 Group", "lessonType": ["Match"], "notes": "" }
+      ]
+    },
+    {
+      "day": "TUE",
+      "date": "MAY 19",
+      "slots": [
+        { "startHour": 7, "duration": 2, "student": "3 Group", "lessonType": ["Tactics"], "notes": "Net play formations and lob defense" },
+        { "startHour": 9, "duration": 1, "student": "Jieun", "lessonType": ["Backhand"], "notes": "" },
+        { "startHour": 16, "duration": 1, "student": "Jiwon", "lessonType": ["Volley"], "notes": "" },
+        { "startHour": 17, "duration": 1, "student": "David", "lessonType": ["Tactics"], "notes": "" },
+        { "startHour": 18, "duration": 1, "student": "", "lessonType": [], "notes": "" },
+        { "startHour": 21, "duration": 1, "student": "4 Group", "lessonType": ["Match"], "notes": "" },
+        { "startHour": 22, "duration": 1, "student": "", "lessonType": [], "notes": "" }
+      ]
+    },
+    {
+      "day": "WED",
+      "date": "MAY 20",
+      "slots": [
+        { "startHour": 7, "duration": 1, "student": "Jeehee, Jieun", "lessonType": ["Basics"], "notes": "" },
+        { "startHour": 8, "duration": 1, "student": "Jiwon, HK", "lessonType": ["Positioning"], "notes": "" },
+        { "startHour": 9, "duration": 1, "student": "Jieun", "lessonType": ["Volley"], "notes": "" },
+        { "startHour": 11, "duration": 1, "student": "Jiwon", "lessonType": ["Bandeja", "Vibora"], "notes": "" },
+        { "startHour": 14, "duration": 1, "student": "David", "lessonType": ["Match"], "notes": "" },
+        { "startHour": 15, "duration": 2, "student": "Junwoo", "lessonType": ["Match", "Tactics"], "notes": "Tournament prep — focus on left-side patterns" },
+        { "startHour": 18, "duration": 1, "student": "", "lessonType": [], "notes": "" },
+        { "startHour": 19, "duration": 1, "student": "", "lessonType": [], "notes": "" },
+        { "startHour": 20, "duration": 1, "student": "", "lessonType": [], "notes": "" },
+        { "startHour": 21, "duration": 1, "student": "", "lessonType": [], "notes": "" }
+      ]
+    },
+    {
+      "day": "THU",
+      "date": "MAY 21",
+      "slots": [
+        { "startHour": 7, "duration": 2, "student": "3 Group", "lessonType": ["Tactics"], "notes": "Net play formations and lob defense" },
+        { "startHour": 9, "duration": 1, "student": "Jieun", "lessonType": ["Forehand"], "notes": "" }
+      ]
+    }
+  ]
+}

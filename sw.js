@@ -2,7 +2,7 @@
 // Strategy: NEVER cache index.html (always fresh), cache CDN deps for offline.
 // Bump CACHE_VERSION whenever you change cached asset URLs or behavior.
 
-const CACHE_VERSION = 'ps-coach-v2';
+const CACHE_VERSION = 'ps-coach-v3';
 const NEVER_CACHE = ['index.html', '/', './'];
 
 // CDN deps that rarely change — cache aggressively for offline use

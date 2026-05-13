@@ -51,12 +51,78 @@
   <div id="root"></div>
 
   <script type="text/babel" data-presets="env,react">
-    const { useState, useEffect, useMemo } = React;
+    const { useState, useEffect, useMemo, useRef, useCallback } = React;
 
     const STORAGE_KEY = 'ps-schedule-v4';
+    const PAT_KEY = 'ps-schedule-pat-v1';
     const START_HOUR = 7;
     const END_HOUR = 23;
     const HOURS = Array.from({ length: END_HOUR - START_HOUR }, (_, i) => START_HOUR + i);
+
+    // --- GitHub-as-DB config ---
+    const REPO_OWNER = 'padelociety';
+    const REPO_NAME = 'PS-coach';
+    const DATA_PATH = 'data.json';
+    const RAW_URL = `https://raw.githubusercontent.com/${REPO_OWNER}/${REPO_NAME}/main/${DATA_PATH}`;
+    const API_URL = `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/contents/${DATA_PATH}`;
+    const POLL_MS = 30000;
+    const SAVE_DEBOUNCE_MS = 2000;
+
+    // Encode a string to base64 safely (handles UTF-8 incl. Korean)
+    function toBase64(str) {
+      return btoa(unescape(encodeURIComponent(str)));
+    }
+    function fromBase64(b64) {
+      return decodeURIComponent(escape(atob(b64.replace(/\n/g, ''))));
+    }
+
+    // Get current data.json + its sha (sha needed for updates). Returns null on failure.
+    async function ghFetchWithSha(pat) {
+      try {
+        const headers = { 'Accept': 'application/vnd.github+json' };
+        if (pat) headers['Authorization'] = `Bearer ${pat}`;
+        const res = await fetch(`${API_URL}?ref=main&cb=${Date.now()}`, { headers, cache: 'no-store' });
+        if (res.status === 404) return { data: null, sha: null, notFound: true };
+        if (!res.ok) return null;
+        const json = await res.json();
+        const text = fromBase64(json.content || '');
+        return { data: JSON.parse(text), sha: json.sha };
+      } catch (e) { return null; }
+    }
+
+    // Fetch raw data.json (no sha, public, no rate limit). For read-only viewers.
+    async function ghFetchRaw() {
+      try {
+        const res = await fetch(`${RAW_URL}?cb=${Date.now()}`, { cache: 'no-store' });
+        if (!res.ok) return null;
+        return await res.json();
+      } catch (e) { return null; }
+    }
+
+    // Push data.json to GitHub. Returns new sha. Throws on failure.
+    async function ghPush(data, pat, prevSha) {
+      const body = {
+        message: `Update schedule (${new Date().toISOString().slice(0,19).replace('T',' ')} UTC)`,
+        content: toBase64(JSON.stringify(data, null, 2) + '\n'),
+        branch: 'main',
+      };
+      if (prevSha) body.sha = prevSha;
+      const res = await fetch(API_URL, {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${pat}`,
+          'Accept': 'application/vnd.github+json',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) {
+        const err = await res.text();
+        throw new Error(`${res.status}: ${err.slice(0, 200)}`);
+      }
+      const json = await res.json();
+      return json.content && json.content.sha;
+    }
 
     const BUILTIN_LESSON_TYPES = ['Basics', 'Forehand', 'Backhand', 'Volley', 'Bandeja', 'Vibora', 'Smash', 'Positioning', 'Tactics', 'Match'];
     const CUSTOM_COLOR_PALETTE = ['#ef4444', '#10b981', '#a855f7', '#f43f5e', '#14b8a6', '#84cc16', '#f97316', '#22d3ee', '#eab308', '#d946ef'];
@@ -165,11 +231,23 @@
       const [editCoach, setEditCoach] = useState(false);
       const [tempCoach, setTempCoach] = useState('');
       const [hydrated, setHydrated] = useState(false);
-      const [exporting, setExporting] = useState(false);
       const [customLessonTypes, setCustomLessonTypes] = useState([]);
       const [customTypeColors, setCustomTypeColors] = useState({});
       const [confirmDeleteType, setConfirmDeleteType] = useState(null);
       const [updateAvailable, setUpdateAvailable] = useState(false);
+
+      // --- Sync state ---
+      const [pat, setPat] = useState(() => { try { return localStorage.getItem(PAT_KEY) || ''; } catch (e) { return ''; } });
+      const [showSettings, setShowSettings] = useState(false);
+      const [syncState, setSyncState] = useState('idle'); // 'idle' | 'pending' | 'syncing' | 'synced' | 'error' | 'offline'
+      const [syncError, setSyncError] = useState('');
+      const shaRef = useRef(null);
+      const lastPushedRef = useRef('');
+      const saveTimerRef = useRef(null);
+      const isEditingRef = useRef(false);
+      useEffect(() => { isEditingRef.current = !!edit || editCoach || showSettings; }, [edit, editCoach, showSettings]);
+
+      const isAdmin = !!pat;
 
       const lessonTypes = useMemo(() => [...BUILTIN_LESSON_TYPES, ...customLessonTypes], [customLessonTypes]);
       const typeColor = (t) => BUILTIN_TYPE_COLORS[t] || customTypeColors[t] || '#94a3b8';
@@ -197,28 +275,105 @@
         setConfirmDeleteType(null);
       };
 
-      // Hydrate from localStorage
-      useEffect(() => {
-        try {
-          const raw = localStorage.getItem(STORAGE_KEY);
-          if (raw) {
-            const parsed = JSON.parse(raw);
-            if (parsed.coach) setCoach(parsed.coach);
-            if (Array.isArray(parsed.customLessonTypes)) setCustomLessonTypes(parsed.customLessonTypes);
-            if (parsed.customTypeColors && typeof parsed.customTypeColors === 'object') setCustomTypeColors(parsed.customTypeColors);
-            if (parsed.days) setDays(migrateDays(parsed.days));
-          }
-        } catch (e) { console.warn('localStorage load failed:', e); }
-        setHydrated(true);
+      // Apply a parsed data snapshot to state (used by initial load + polling)
+      const applySnapshot = useCallback((parsed) => {
+        if (!parsed || typeof parsed !== 'object') return;
+        if (typeof parsed.coach === 'string') setCoach(parsed.coach);
+        if (Array.isArray(parsed.customLessonTypes)) setCustomLessonTypes(parsed.customLessonTypes);
+        if (parsed.customTypeColors && typeof parsed.customTypeColors === 'object') setCustomTypeColors(parsed.customTypeColors);
+        if (Array.isArray(parsed.days)) setDays(migrateDays(parsed.days));
       }, []);
 
-      // Persist
+      // Initial load: try GitHub first, fall back to localStorage
+      useEffect(() => {
+        let cancelled = false;
+        (async () => {
+          let remote = null;
+          if (pat) {
+            const r = await ghFetchWithSha(pat);
+            if (r && r.data) { remote = r.data; shaRef.current = r.sha; }
+          }
+          if (!remote) {
+            const raw = await ghFetchRaw();
+            if (raw) remote = raw;
+          }
+          if (cancelled) return;
+          if (remote) {
+            applySnapshot(remote);
+            const snap = JSON.stringify({ v:1, coach: remote.coach || 'Saul', days: remote.days || INITIAL_DATA, customLessonTypes: remote.customLessonTypes || [], customTypeColors: remote.customTypeColors || {} });
+            lastPushedRef.current = snap;
+            try { localStorage.setItem(STORAGE_KEY, snap); } catch (e) {}
+          } else {
+            try {
+              const raw = localStorage.getItem(STORAGE_KEY);
+              if (raw) applySnapshot(JSON.parse(raw));
+            } catch (e) { console.warn('localStorage load failed:', e); }
+            setSyncState('offline');
+          }
+          setHydrated(true);
+        })();
+        return () => { cancelled = true; };
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+      }, []);
+
+      // Persist to localStorage on any state change (offline cache)
       useEffect(() => {
         if (!hydrated) return;
         try {
-          localStorage.setItem(STORAGE_KEY, JSON.stringify({ coach, days, customLessonTypes, customTypeColors }));
-        } catch (e) { console.error('Save failed:', e); }
+          localStorage.setItem(STORAGE_KEY, JSON.stringify({ v:1, coach, days, customLessonTypes, customTypeColors }));
+        } catch (e) { console.error('localStorage save failed:', e); }
       }, [coach, days, customLessonTypes, customTypeColors, hydrated]);
+
+      // Debounced push to GitHub when admin edits
+      useEffect(() => {
+        if (!hydrated || !pat) return;
+        const snapshot = { v:1, coach, days, customLessonTypes, customTypeColors };
+        const serialized = JSON.stringify(snapshot);
+        if (serialized === lastPushedRef.current) return;
+        setSyncState('pending');
+        if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+        saveTimerRef.current = setTimeout(async () => {
+          saveTimerRef.current = null;
+          setSyncState('syncing');
+          try {
+            const cur = await ghFetchWithSha(pat);
+            const sha = cur && cur.sha ? cur.sha : shaRef.current;
+            const newSha = await ghPush(snapshot, pat, sha);
+            shaRef.current = newSha || null;
+            lastPushedRef.current = serialized;
+            setSyncState('synced');
+            setSyncError('');
+            setTimeout(() => setSyncState(s => s === 'synced' ? 'idle' : s), 1800);
+          } catch (e) {
+            console.error('GitHub push failed:', e);
+            setSyncState('error');
+            setSyncError(String(e.message || e));
+          }
+        }, SAVE_DEBOUNCE_MS);
+      }, [coach, days, customLessonTypes, customTypeColors, hydrated, pat]);
+
+      // Polling: fetch latest data.json every POLL_MS, apply if changed
+      useEffect(() => {
+        if (!hydrated) return;
+        const id = setInterval(async () => {
+          if (isEditingRef.current) return;
+          if (saveTimerRef.current) return;
+          if (syncState === 'syncing') return;
+          let remote = null;
+          if (pat) {
+            const r = await ghFetchWithSha(pat);
+            if (r && r.data) { remote = r.data; if (r.sha) shaRef.current = r.sha; }
+          } else {
+            remote = await ghFetchRaw();
+          }
+          if (!remote) return;
+          const remoteStr = JSON.stringify({ v:1, coach: remote.coach || 'Saul', days: remote.days || [], customLessonTypes: remote.customLessonTypes || [], customTypeColors: remote.customTypeColors || {} });
+          if (remoteStr === lastPushedRef.current) return;
+          applySnapshot(remote);
+          lastPushedRef.current = remoteStr;
+        }, POLL_MS);
+        return () => clearInterval(id);
+      }, [hydrated, pat, syncState, applySnapshot]);
 
       // Hide splash once hydrated
       useEffect(() => {
@@ -282,6 +437,7 @@
       }, [days]);
 
       const openEdit = (dayIdx, slotIdx, defaultHour = 14) => {
+        if (!isAdmin) return;
         if (slotIdx === 'new') {
           setEdit({ dayIdx, slotIdx, startHour: defaultHour, duration: 1, student: '', lessonType: [], notes: '' });
         } else {
@@ -326,35 +482,6 @@
         setEdit(null);
       };
 
-      // Export current data as a JSON backup file
-      const exportData = () => {
-        setExporting(true);
-        try {
-          const data = {
-            v: 1,
-            exportedAt: new Date().toISOString(),
-            coach,
-            days,
-            customLessonTypes,
-            customTypeColors,
-          };
-          const json = JSON.stringify(data, null, 2);
-          const blob = new Blob([json], { type: 'application/json' });
-          const url = URL.createObjectURL(blob);
-          const a = document.createElement('a');
-          a.href = url;
-          a.download = `PS-schedule-${coach}-${new Date().toISOString().slice(0,10)}.json`;
-          document.body.appendChild(a);
-          a.click();
-          document.body.removeChild(a);
-          setTimeout(() => URL.revokeObjectURL(url), 1000);
-        } catch (e) {
-          console.error(e);
-          alert('Backup failed: ' + (e.message || e));
-        }
-        setTimeout(() => setExporting(false), 600);
-      };
-
       const ROW_HEIGHT = 42;
       const HEADER_HEIGHT = 44;
       const TIME_COL_WIDTH = 40;
@@ -387,7 +514,11 @@
                   <span style={{ background: 'linear-gradient(135deg, #bef264 0%, #7dd3fc 50%, #f9a8d4 100%)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text' }}>WEEKLY</span>
                   <span className="text-slate-100"> SCHEDULE</span>
                 </h1>
-                <button onClick={() => { setTempCoach(coach); setEditCoach(true); }} className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full active:scale-95 transition-all" style={{ background: 'linear-gradient(135deg, rgba(190,242,100,0.15) 0%, rgba(125,211,252,0.15) 100%)', border: '1px solid rgba(190,242,100,0.4)' }}>
+                <button
+                  onClick={() => { if (!isAdmin) return; setTempCoach(coach); setEditCoach(true); }}
+                  disabled={!isAdmin}
+                  className={`inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full transition-all ${isAdmin ? 'active:scale-95 cursor-pointer' : 'cursor-default'}`}
+                  style={{ background: 'linear-gradient(135deg, rgba(190,242,100,0.15) 0%, rgba(125,211,252,0.15) 100%)', border: '1px solid rgba(190,242,100,0.4)' }}>
                   <span className="text-[10px] font-bold tracking-[0.2em]" style={{ color: '#bef264' }}>COACH</span>
                   <span className="text-slate-100 font-bold text-sm">{coach}</span>
                 </button>
@@ -427,6 +558,7 @@
                         {HOURS.map((h, i) => {
                           const covered = day.slots.some(s => h >= s.startHour && h < s.startHour + s.duration);
                           if (covered) return null;
+                          if (!isAdmin) return null;
                           return (
                             <button key={`empty-${i}`} onClick={() => openEdit(dayIdx, 'new', h)} className="absolute rounded-md transition-all active:scale-95 group" style={{ top: `${i * (ROW_HEIGHT + 4)}px`, height: `${ROW_HEIGHT}px`, left: 0, right: 0, background: `rgba(${color.rgb}, 0.025)`, border: `1px dashed rgba(${color.rgb}, 0.12)` }}>
                               <span className="text-slate-700 text-lg opacity-0 group-hover:opacity-100 transition-opacity">+</span>
@@ -775,38 +907,136 @@
             </div>
           )}
 
-          {/* Data Backup FAB — downloads .json */}
-          <button
-            onClick={exportData}
-            disabled={exporting}
-            aria-label="Save data backup"
-            title="Download data backup (.json)"
-            className="fixed bottom-6 right-6 z-40 active:scale-90 transition-all disabled:opacity-50 group"
-            style={{
-              width: '60px',
-              height: '60px',
-              borderRadius: '50%',
-              background: exporting ? 'linear-gradient(135deg, #34d399 0%, #6ee7b7 100%)' : 'linear-gradient(135deg, #bef264 0%, #7dd3fc 100%)',
-              boxShadow: '0 10px 30px rgba(190,242,100,0.4), 0 4px 10px rgba(0,0,0,0.3)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              border: 'none',
-              cursor: exporting ? 'wait' : 'pointer',
-            }}
-          >
-            {exporting ? (
-              <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#0f1729" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="anim-pop">
-                <polyline points="20 6 9 17 4 12"/>
-              </svg>
-            ) : (
-              <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#0f1729" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-                <polyline points="7 10 12 15 17 10"/>
-                <line x1="12" y1="15" x2="12" y2="3"/>
-              </svg>
+          {/* Sync status pill + Settings gear (top-right, fixed) */}
+          <div className="fixed top-3 right-3 z-40 flex items-center gap-2">
+            {syncState !== 'idle' && (
+              <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold tracking-wider"
+                style={{
+                  background: syncState === 'error' ? 'rgba(239,68,68,0.15)' :
+                              syncState === 'synced' ? 'rgba(52,211,153,0.15)' :
+                              syncState === 'offline' ? 'rgba(148,163,184,0.15)' :
+                              'rgba(125,211,252,0.15)',
+                  border: syncState === 'error' ? '1px solid rgba(239,68,68,0.4)' :
+                          syncState === 'synced' ? '1px solid rgba(52,211,153,0.4)' :
+                          syncState === 'offline' ? '1px solid rgba(148,163,184,0.4)' :
+                          '1px solid rgba(125,211,252,0.4)',
+                  color: syncState === 'error' ? '#fca5a5' :
+                         syncState === 'synced' ? '#6ee7b7' :
+                         syncState === 'offline' ? '#cbd5e1' :
+                         '#7dd3fc',
+                }}>
+                {(syncState === 'pending' || syncState === 'syncing') && (
+                  <span className="inline-block w-1.5 h-1.5 rounded-full" style={{ background: '#7dd3fc', animation: 'pulseOpacity 1.2s ease-in-out infinite' }} />
+                )}
+                {syncState === 'synced' && (
+                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                )}
+                {syncState === 'error' && (<span>!</span>)}
+                <span>
+                  {syncState === 'pending' && 'PENDING'}
+                  {syncState === 'syncing' && 'SYNCING'}
+                  {syncState === 'synced' && 'SAVED'}
+                  {syncState === 'error' && 'ERROR'}
+                  {syncState === 'offline' && 'OFFLINE'}
+                </span>
+              </div>
             )}
-          </button>
+            <button
+              onClick={() => setShowSettings(true)}
+              aria-label="Settings"
+              title="Settings"
+              className="w-9 h-9 rounded-full active:scale-90 transition-all flex items-center justify-center"
+              style={{ background: 'rgba(24,33,50,0.7)', backdropFilter: 'blur(6px)', border: '1px solid rgba(148,163,184,0.25)' }}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={isAdmin ? '#bef264' : '#cbd5e1'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="3"/>
+                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+              </svg>
+            </button>
+          </div>
+
+          {showSettings && (
+            <div className="fixed inset-0 bg-black/70 backdrop-blur-md z-[70] flex items-end sm:items-center justify-center sm:p-4 anim-pop" onClick={() => setShowSettings(false)}>
+              <div className="bg-[#182132] border border-slate-700 rounded-t-3xl sm:rounded-3xl w-full sm:max-w-md p-6 sm:p-7 anim-slide max-h-[92vh] overflow-y-auto" onClick={e => e.stopPropagation()} style={{ fontFamily: "'Outfit', system-ui, sans-serif" }}>
+                <div className="flex justify-between items-start mb-4">
+                  <div>
+                    <div className="text-xl font-black text-slate-100">Settings</div>
+                    <div className="mono text-[10px] tracking-wider mt-0.5 text-slate-400">SYNC · ADMIN ACCESS</div>
+                  </div>
+                  <div className="mono text-[10px] font-bold px-2.5 py-1 rounded-full"
+                    style={{ background: isAdmin ? 'rgba(190,242,100,0.15)' : 'rgba(148,163,184,0.15)', color: isAdmin ? '#bef264' : '#cbd5e1', border: isAdmin ? '1px solid rgba(190,242,100,0.4)' : '1px solid rgba(148,163,184,0.3)' }}>
+                    {isAdmin ? 'ADMIN' : 'READ-ONLY'}
+                  </div>
+                </div>
+
+                <div className="text-[11px] text-slate-400 leading-relaxed mb-4">
+                  Schedule is stored in the <span className="mono text-slate-200">{REPO_OWNER}/{REPO_NAME}</span> repo and synced across all devices.
+                  To edit, paste a GitHub <span className="font-bold text-slate-200">fine-grained personal access token</span> with
+                  <span className="mono text-[#bef264]"> Contents: Read &amp; Write</span> on this repo.
+                </div>
+
+                <label className="block text-[10px] font-bold tracking-[0.2em] mb-2 text-[#bef264]">GITHUB TOKEN</label>
+                <input
+                  id="pat-input"
+                  type="password"
+                  defaultValue={pat}
+                  placeholder="github_pat_…"
+                  autoComplete="off"
+                  className="w-full mono bg-slate-900/50 border border-slate-700 rounded-xl px-3 py-3 text-slate-100 text-xs placeholder-slate-600 focus:border-[#bef264] focus:outline-none transition"
+                />
+                <div className="text-[10px] text-slate-500 mt-1.5 leading-snug">
+                  Token is stored in this browser only (<span className="mono">localStorage</span>) — never sent to anyone except GitHub.
+                </div>
+
+                {syncError && (
+                  <div className="mt-3 p-2.5 rounded-lg text-[11px] leading-snug" style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', color: '#fca5a5' }}>
+                    <span className="font-bold">Last error:</span> <span className="mono break-all">{syncError}</span>
+                  </div>
+                )}
+
+                <div className="flex gap-2 mt-5">
+                  {isAdmin && (
+                    <button
+                      onClick={() => {
+                        try { localStorage.removeItem(PAT_KEY); } catch (e) {}
+                        setPat('');
+                        setSyncError('');
+                        setSyncState('idle');
+                      }}
+                      className="px-4 py-3 rounded-xl bg-red-500/10 border border-red-500/30 text-red-400 hover:bg-red-500/20 active:scale-95 font-semibold text-sm transition">
+                      Sign out
+                    </button>
+                  )}
+                  <button onClick={() => setShowSettings(false)} className="flex-1 px-4 py-3 rounded-xl bg-slate-700/50 hover:bg-slate-700 active:scale-95 text-slate-300 font-semibold text-sm transition">Cancel</button>
+                  <button
+                    onClick={() => {
+                      const v = (document.getElementById('pat-input')?.value || '').trim();
+                      if (!v) { try { localStorage.removeItem(PAT_KEY); } catch (e) {}; setPat(''); setShowSettings(false); return; }
+                      try { localStorage.setItem(PAT_KEY, v); } catch (e) {}
+                      setPat(v);
+                      setSyncError('');
+                      setSyncState('idle');
+                      setShowSettings(false);
+                    }}
+                    className="flex-1 px-4 py-3 rounded-xl text-slate-900 font-bold text-sm transition active:scale-95"
+                    style={{ background: 'linear-gradient(135deg, #bef264 0%, #7dd3fc 100%)' }}>
+                    Save
+                  </button>
+                </div>
+
+                <div className="mt-5 pt-4 border-t border-slate-700/50">
+                  <div className="text-[10px] font-bold tracking-[0.2em] mb-2 text-slate-400">HOW TO GET A TOKEN</div>
+                  <ol className="text-[11px] text-slate-400 space-y-1 leading-relaxed list-decimal list-inside">
+                    <li>github.com → top-right avatar → <span className="text-slate-200">Settings</span></li>
+                    <li>Left sidebar → <span className="text-slate-200">Developer settings</span></li>
+                    <li><span className="text-slate-200">Personal access tokens → Fine-grained tokens</span> → Generate new</li>
+                    <li>Repository access: only <span className="mono text-slate-200">{REPO_OWNER}/{REPO_NAME}</span></li>
+                    <li>Permissions: <span className="mono text-[#bef264]">Contents</span> = <span className="text-slate-200">Read &amp; write</span></li>
+                    <li>Copy the token, paste above, hit Save</li>
+                  </ol>
+                </div>
+              </div>
+            </div>
+          )}
 
         </div>
       );
